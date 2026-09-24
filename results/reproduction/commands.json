@@ -1,0 +1,27 @@
+[
+  {
+    "command": "python run.py --pilot --out reproduced-pilot",
+    "exit_code": 0,
+    "result": "2,052 obligations; 0 oracle disagreements"
+  },
+  {
+    "command": "python run.py --out reproduced",
+    "exit_code": 0,
+    "result": "39,246 obligations; 999 generated schedule/fault/protocol cases"
+  },
+  {
+    "command": "python validate.py --out validation-reproduced --transcripts reproduced/signed_transcripts.json",
+    "exit_code": 0,
+    "result": "50 tests; 0 failures/errors; 128 signed-evidence cases agree"
+  },
+  {
+    "command": "python verify.py results/full reproduced",
+    "exit_code": 0,
+    "result": "15 deterministic scientific files agree byte-for-byte"
+  },
+  {
+    "command": "python check_evidence.py --authorization inputs/authorized_signers.json --transcripts reproduced/signed_transcripts.json",
+    "exit_code": 0,
+    "result": "128 cases; 16 accepted; 112 rejected; 0 disagreements"
+  }
+]

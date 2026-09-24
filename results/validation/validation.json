@@ -1,0 +1,17 @@
+{
+  "counted_obligations": 178,
+  "evidence": {
+    "accepted": 16,
+    "cases": 128,
+    "disagreements": 0,
+    "rejected": 112,
+    "trust_anchor": "separate explicitly supplied authorization file"
+  },
+  "peak_rss_kib": 100020,
+  "total_process_cpu_seconds": 0.988837,
+  "unit_errors": 0,
+  "unit_failures": 0,
+  "unit_tests": 50,
+  "wall_region_seconds": 0.18118870299986156,
+  "workers": 1
+}
