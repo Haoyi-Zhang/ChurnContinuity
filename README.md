@@ -25,11 +25,11 @@ The general arguments establish, under the explicit assumptions in
   under exact handoff and context invariants, across a bounded serial chain;
 - exactly-once inclusion when the certified base vector is tied to a sealed
   stable-ID cut;
-- static one-server privacy for the continuity layer over a prime field;
+- static protocol-following one-server privacy for the continuity layer over a prime field, with a role-defined joint simulator;
 - one-fault post-activation component availability from two-holder receipts;
 - crash-safe deterministic replay under the modeled durable-store contract;
-- positive evidence for a signed invalid random-mask opening or same-context
-  equivocation, but not for silence.
+- positive evidence for an independently signed invalid peer-mask opening or
+  same-context equivocation, but not for silence.
 
 The repository also retains the earlier exact mixed-generation criterion and
 negative controls.  Those checks show why logical content equality, an attempt
@@ -64,6 +64,7 @@ external model/API execution.
 From the repository root:
 
 ```sh
+python reviewer_symbolic_check.py --out reproduced-joint-view
 python run.py --pilot --out reproduced-pilot
 python run.py --out reproduced
 python validate.py --out validation-reproduced \
@@ -87,20 +88,27 @@ overwrites scientific results.
   generation-binding and crash controls;
 - `evidence.csv`, `signed_transcripts.json`: the original signed contradiction
   corpus;
-- `continuity_cases.csv`: 31 physical-layout cases (one honest path, 20
+- `continuity_cases.csv`: 32 physical-layout cases (one honest path, 20
   persistence-boundary crash/replay cases, five certificate mutations, three
-  verifier ablations, and two positive evidence cases);
-- `privacy_views.csv`: exact one-server view distributions for all five secrets
-  in the `F_5` oracle and all three server roles;
+  verifier ablations, one unchanged cross-context receipt transplant, and two
+  positive evidence cases);
+- `privacy_views.csv`: exact algebraic private-subview distributions for all five
+  secrets in the `F_5` oracle and all three active roles;
+- `joint_view_privacy.csv`, `joint_view_privacy.json`: one-coordinate joint
+  private/public views for four protocol-following roles, including blindings and
+  all eight correlated commitments, plus finite-field rank witnesses;
 - `certificate_sizes.csv`: dimensions 1, 8, 32, and 64;
 - `continuity_certificate.json`, `continuity_evidence.json`: one complete public
   certificate and bounded evidence samples;
 - `scientific_summary.json` and `telemetry.json`.
 
-The complete campaign contains 39,246 counted obligations and 999 generated
-schedule/fault/protocol cases.  All 31 continuity cases matched their frozen
-oracles, and all 50 unit and boundary tests passed.  The privacy oracle compared 9,375 single-server views and found the
-same exact distribution for every secret in each role.  The reference JSON
+The complete campaign contains 43,407 counted obligations and 1,000 generated
+schedule/fault/protocol cases.  All 32 continuity cases matched their frozen
+oracles, and all 55 unit and boundary tests passed.  The algebraic privacy oracle
+compared 9,375 private subviews and found the same exact distribution for every
+secret in each active role.  The independent joint-view checker compared 4,096
+exact `F_2` views across four roles and ran 64 finite-field rank checks; it
+includes blindings and correlated commitments but not actual signature bytes.  The reference JSON
 certificate is 3,708--3,717 bytes across the four vector dimensions, while the
 four authenticated private envelopes grow from 1,630 to 3,130 bytes.
 
@@ -113,7 +121,9 @@ outcomes of synthetic fixtures, not estimates of deployment failure rates.
 
 ```text
 src/churn/continuity.py              physical protocol and certificate verifier
-src/churn/continuity_experiments.py  exact privacy, crash, mutation, and size checks
+src/churn/continuity_experiments.py  algebraic privacy, crash, mutation, and size checks
+src/churn/joint_view.py              independent one-coordinate joint-view checker
+reviewer_symbolic_check.py           runnable joint-view checker entry point
 src/churn/algebra.py                 mixed-generation arithmetic checks
 src/churn/model.py                   stable-ID ledger and ideal durable-slot model
 src/churn/evidence.py                original signed contradiction predicate
@@ -122,7 +132,7 @@ docs/interfaces.md                   assumption and evidence map
 tests/test_contract.py               unit and boundary tests
 claim_evidence_ledger.csv            claim-to-evidence ledger
 external_resources.csv               scholarly/tool source ledger
-reference-audit.csv                    all 67 bibliography records, locators, audit tier, and citation counts
+reference-audit.csv                  all 67 bibliography records, locators, audit tier, and citation counts
 ```
 
 ## Evidence interpretation

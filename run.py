@@ -63,6 +63,12 @@ def main() -> None:
         dump(output/'continuity_certificate.json',certificate)
         dump(output/'continuity_evidence.json',evidence_samples)
         obligations+=k
+        from churn.joint_view import compute_report as joint_view_report
+        joint_rows,joint_report=joint_view_report()
+        csv_write(output/'joint_view_privacy.csv',joint_rows)
+        dump(output/'joint_view_privacy.json',joint_report)
+        joint_obligations=joint_report['exact_assignments']+joint_report['rank_checks']
+        obligations+=joint_obligations
         summary.update({'ring_obligations':sum(r['assignments'] for r in ring),
                         'generated_schedule_fault_cases':len(traces)+len(crashes)+len(semantics)+len(evidence)+len(continuity),
                         'permutation_cases':len(traces),'crash_cases':len(crashes),
@@ -79,6 +85,12 @@ def main() -> None:
                         'continuity_case_failures':sum(r['observed']!=r['expected'] for r in continuity),
                         'privacy_view_obligations':sum(r['assignments'] for r in privacy),
                         'privacy_distributions_equal':sum(r['matches_secret_zero'] for r in privacy),
+                        'joint_view_exact_assignments':joint_report['exact_assignments'],
+                        'joint_view_distribution_comparisons':joint_report['exact_distribution_comparisons'],
+                        'joint_view_rank_checks':joint_report['rank_checks'],
+                        'joint_view_checks_passed':int(
+                            joint_report['all_exact_distributions_equal'] and
+                            joint_report['all_rank_checks_passed']),
                         'certificate_size_points':len(sizes),
                         'public_certificate_json_bytes_min':min(r['public_certificate_json_bytes'] for r in sizes),
                         'public_certificate_json_bytes_max':max(r['public_certificate_json_bytes'] for r in sizes),

@@ -9,11 +9,12 @@ from churn.model import Conflict,Ledger,Store,Ready,fixture,reconstruct
 from churn.evidence import Binding,Signed,fixture_key,public_bytes,sign,verify_contradiction
 from churn.continuity import (
     DurableServer, Opening, Statement, TinyVectorPedersen, TransferContext,
-    deep_copy_certificate, derive_survivor_opening, fixture_authorization, initial_state, make_transfer,
+    deep_copy_certificate, derive_survivor_opening, fixture_authorization, import_signed, initial_state, make_transfer,
     sign_statement, validate_serial_contexts, verify_certificate, verify_certificate_chain, verify_equivocation, verify_invalid_opening,
     verify_private_delivery, vec_add,
 )
 from churn.continuity_experiments import _component_steps, _finalize, _servers, complete_transfer, privacy_checks
+from churn.joint_view import compute_report as joint_view_report
 
 class ContractTests(unittest.TestCase):
     def bindings(self):
@@ -263,6 +264,19 @@ class ContractTests(unittest.TestCase):
                                  ('new-x','stay-1','stay-2'),0,'other','other-generation',4)
         self.assertFalse(verify_invalid_opening(sign_statement(bad,keys[bad.signer]),outsider,auth,group))
 
+    def test_replacement_component_envelope_is_not_public_mask_evidence(self):
+        group,context,_,keys,auth,bundle=self.continuity_fixture()
+        message=next(m for m in bundle.private_opening_statements
+                     if m.statement.kind=='MASK_COMPONENT_OPENING')
+        body=dict(message.statement.body);body['values']=list(body['values'])
+        body['values'][0]=(body['values'][0]+1)%group.q
+        bad=Statement(message.statement.context_id,message.statement.kind,
+                      message.statement.signer,message.statement.role,body)
+        signed=sign_statement(bad,keys[bad.signer])
+        self.assertIsNone(verify_private_delivery(
+            signed,context,bundle.mask_commitments,bundle.new_state.commitments,auth,group))
+        self.assertFalse(verify_invalid_opening(signed,context,auth,group))
+
     def test_mask_equivocation_context_bound(self):
         group,context,_,keys,auth,bundle=self.continuity_fixture()
         first=bundle.proposal_statements[0];body=dict(first.statement.body)
@@ -278,6 +292,14 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(len(rows),15)
         self.assertEqual(obligations,9375)
         self.assertTrue(all(row['matches_secret_zero'] for row in rows))
+
+    def test_joint_private_public_view_checker(self):
+        rows,report=joint_view_report()
+        self.assertEqual(len(rows),8)
+        self.assertEqual(report['exact_assignments'],4096)
+        self.assertEqual(report['rank_checks'],64)
+        self.assertTrue(report['all_exact_distributions_equal'])
+        self.assertTrue(report['all_rank_checks_passed'])
 
     def test_prepared_replacement_opening_is_locally_derived(self):
         group,context,_,_,_,bundle=self.continuity_fixture()
@@ -471,5 +493,97 @@ class ContractTests(unittest.TestCase):
         value=noncanonical['mask_commitments'].pop('1')
         noncanonical['mask_commitments']['01']=value
         self.assertFalse(verify_certificate(noncanonical,auth,group))
+
+    def test_certificate_container_type_errors_return_false(self):
+        group,_,_,_,auth,bundle=self.continuity_fixture()
+        for field,values in {
+            'context': (None, [], 'context'),
+            'old_commitments': (None, {}, 'old'),
+            'new_commitments': (None, {}, 'new'),
+            'mask_commitments': (None, [], 'masks'),
+            'proposals': (None, {}, 'proposals'),
+            'receipts': (None, {}, 'receipts'),
+        }.items():
+            for value in values:
+                with self.subTest(field=field,value_type=type(value).__name__):
+                    cert=deep_copy_certificate(bundle.certificate);cert[field]=value
+                    self.assertFalse(verify_certificate(cert,auth,group))
+
+        for member_field in ('old_members','new_members'):
+            for value in (None, {}, 'abc'):
+                with self.subTest(context_field=member_field,value_type=type(value).__name__):
+                    cert=deep_copy_certificate(bundle.certificate)
+                    cert['context'][member_field]=value
+                    self.assertFalse(verify_certificate(cert,auth,group))
+        for context_field,value in (
+            ('replaced_slot',True),('replaced_slot',0.0),
+            ('dimension',True),('dimension',float(bundle.context.dimension)),
+        ):
+            with self.subTest(context_field=context_field,value=repr(value)):
+                cert=deep_copy_certificate(bundle.certificate)
+                cert['context'][context_field]=value
+                self.assertFalse(verify_certificate(cert,auth,group))
+
+        for collection in ('proposals','receipts'):
+            for malformed in (None, [], 'message'):
+                with self.subTest(collection=collection,message_type=type(malformed).__name__):
+                    cert=deep_copy_certificate(bundle.certificate)
+                    cert[collection][0]=malformed
+                    self.assertFalse(verify_certificate(cert,auth,group))
+            for malformed_body in (None, [], 'body'):
+                with self.subTest(collection=collection,body_type=type(malformed_body).__name__):
+                    cert=deep_copy_certificate(bundle.certificate)
+                    cert[collection][0]['statement']['body']=malformed_body
+                    self.assertFalse(verify_certificate(cert,auth,group))
+
+    def test_re_signed_noncanonical_semantic_integers_are_rejected(self):
+        group,_,_,keys,auth,bundle=self.continuity_fixture()
+
+        cert=deep_copy_certificate(bundle.certificate)
+        for index,raw in enumerate(cert['proposals']):
+            signed=import_signed(raw)
+            if signed.statement.body['target_component']==1:
+                body=dict(signed.statement.body);body['target_component']=True
+                cert['proposals'][index]=sign_statement(
+                    Statement(signed.statement.context_id,signed.statement.kind,
+                              signed.statement.signer,signed.statement.role,body),
+                    keys[signed.statement.signer]).export()
+        self.assertFalse(verify_certificate(cert,auth,group))
+
+        cert=deep_copy_certificate(bundle.certificate)
+        for index,raw in enumerate(cert['proposals']):
+            signed=import_signed(raw);body=dict(signed.statement.body)
+            body['dimension']=float(body['dimension'])
+            cert['proposals'][index]=sign_statement(
+                Statement(signed.statement.context_id,signed.statement.kind,
+                          signed.statement.signer,signed.statement.role,body),
+                keys[signed.statement.signer]).export()
+        self.assertFalse(verify_certificate(cert,auth,group))
+
+        cert=deep_copy_certificate(bundle.certificate)
+        for index,raw in enumerate(cert['receipts']):
+            signed=import_signed(raw)
+            if signed.statement.body['component']==1:
+                body=dict(signed.statement.body);body['component']=True
+                cert['receipts'][index]=sign_statement(
+                    Statement(signed.statement.context_id,signed.statement.kind,
+                              signed.statement.signer,signed.statement.role,body),
+                    keys[signed.statement.signer]).export()
+        self.assertFalse(verify_certificate(cert,auth,group))
+
+    def test_cross_context_receipt_transplant_rejected_with_generation_check_disabled(self):
+        group,context,_,keys,auth,bundle=self.continuity_fixture()
+        other_context=TransferContext(
+            context.service,context.epoch,context.cut_root,context.old_members,
+            context.new_members,context.replaced_slot,'other-session',
+            'other-generation',context.dimension,
+        )
+        other=make_transfer(other_context,bundle.old_state,keys,'other-transfer',group)
+        complete_transfer(other,keys,group)
+        transplanted=deep_copy_certificate(bundle.certificate)
+        transplanted['receipts']=deep_copy_certificate(other.certificate)['receipts']
+        self.assertFalse(verify_certificate(transplanted,auth,group))
+        self.assertFalse(verify_certificate(
+            transplanted,auth,group,check_generation=False))
 
 if __name__=='__main__':unittest.main()

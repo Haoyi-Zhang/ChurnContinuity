@@ -265,12 +265,12 @@ def _resign_receipts(certificate: dict[str, Any], keys, *, generation: str | Non
 
 
 def protocol_cases() -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]], int]:
-    """Return exactly 31 generated protocol/fault cases.
+    """Return exactly 32 generated protocol/fault cases.
 
     1 honest execution + 20 crash boundaries + 5 certificate mutations +
-    3 ablations + 2 positive evidence cases = 31.  Two evidence negative
-    controls remain mandatory assertions and unit tests but are not counted as
-    generated cases.
+    3 ablations + 1 unchanged cross-context transplant + 2 positive evidence
+    cases = 32.  Other evidence negative controls remain mandatory assertions
+    and unit tests but are not counted as generated cases.
     """
     group, context, secret, keys, authorization, bundle = _fixture()
     rows: list[dict[str, Any]] = []
@@ -323,7 +323,7 @@ def protocol_cases() -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[st
     # the unit suite additionally checks non-subgroup encodings, signer/body
     # substitutions, noncanonical keys, and malformed contexts.  Keeping five
     # here leaves room for crash injection at every individual durable receipt
-    # while preserving the frozen 31-case physical family.
+    # while preserving the bounded physical-case family.
     mutations: list[tuple[str, dict[str, Any]]] = []
     cert = deep_copy_certificate(bundle.certificate)
     cert["new_commitments"][0] = group.mul(cert["new_commitments"][0], group.g(0))
@@ -354,14 +354,16 @@ def protocol_cases() -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[st
     add("ablation", "omit-algebraic-links", weak_accept and full_reject, True,
         "A weak verifier accepts an authenticated but secret-changing commitment vector; the full verifier rejects it.")
 
-    # Ablation 2: receipts signed for another generation become usable when the
-    # receipt-generation equality check is disabled.
+    # Ablation 2: re-signed statements whose redundant body generation conflicts
+    # with the signed context become usable when that equality check is disabled.
+    # This is deliberately not described as a replay from another context: the
+    # statements retain the current context identifier and are freshly signed.
     wrong_generation = deep_copy_certificate(bundle.certificate)
     _resign_receipts(wrong_generation, keys, generation="other-generation")
     weak_accept = verify_certificate(wrong_generation, authorization, group, check_generation=False)
     full_reject = not verify_certificate(wrong_generation, authorization, group)
-    add("ablation", "omit-receipt-generation-binding", weak_accept and full_reject, True,
-        "Signed persistence claims from a different generation are rejected only when generation binding is checked.")
+    add("ablation", "omit-receipt-body-generation-consistency", weak_accept and full_reject, True,
+        "Freshly re-signed receipts whose body generation conflicts with their current signed context are accepted only by the weakened equality check.")
 
     # Ablation 3: one receipt per component is insufficient against one later
     # unavailable signer; the full certificate requires both physical holders.
@@ -371,6 +373,25 @@ def protocol_cases() -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[st
     full_reject = not verify_certificate(one_copy, authorization, group)
     add("ablation", "single-receipt-per-component", weak_accept and full_reject, True,
         "A weak availability certificate has no surviving copy guarantee after its sole signer becomes unavailable.")
+
+    # A genuine replay keeps the old signed bytes unchanged.  Even the weakened
+    # verifier above rejects such receipts because every signature is bound to
+    # the other transfer's context identifier.
+    other_group, _, _, other_keys, _, other_bundle = _fixture(
+        dimension=context.dimension, generation="generation-8", seed="cross-context-replay"
+    )
+    if (other_group.p, other_group.q) != (group.p, group.q):
+        raise AssertionError("cross-context fixture changed arithmetic domain")
+    complete_transfer(other_bundle, other_keys, other_group)
+    transplanted = deep_copy_certificate(bundle.certificate)
+    transplanted["receipts"] = copy.deepcopy(other_bundle.certificate["receipts"])
+    full_reject = not verify_certificate(transplanted, authorization, group)
+    weak_reject = not verify_certificate(
+        transplanted, authorization, group, check_generation=False
+    )
+    add("replay-control", "unaltered-cross-context-receipt-transplant",
+        full_reject and weak_reject, True,
+        "Unmodified receipts from another signed context are rejected by context_id even when the redundant body-generation check is disabled.")
 
     evidence_exports = []
     valid_opening = bundle.private_opening_statements[0]
@@ -397,7 +418,7 @@ def protocol_cases() -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[st
         raise AssertionError("different contexts were misclassified as equivocation")
     evidence_exports.extend([valid_opening.export(), invalid_opening.export(), first.export(), second.export()])
 
-    if len(rows) != 31:
+    if len(rows) != 32:
         raise AssertionError(("frozen continuity case count", len(rows)))
     sample = {
         "certificate": bundle.certificate,
@@ -412,8 +433,9 @@ def protocol_cases() -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[st
 def privacy_checks(q: int = 5) -> tuple[list[dict[str, Any]], int]:
     """Exact single-server view equality for the algebraic resharing core.
 
-    Commitments/signatures are not enumerated here.  Pedersen hiding and
-    signature post-processing are handled in the written hybrid proof.
+    Commitments, blindings, and signatures are not enumerated here.  The
+    separate joint-view checker covers correlated commitments and blindings;
+    signature post-processing and the general claim remain in the written proof.
     """
     if q != 5:
         raise ValueError("the frozen exact privacy domain is q=5")

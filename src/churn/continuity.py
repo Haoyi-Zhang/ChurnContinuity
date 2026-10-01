@@ -146,7 +146,7 @@ class TransferContext:
             raise ValueError("context labels must contain 1--128 characters")
         if type(self.epoch) is not int or not 0 <= self.epoch < 2**63:
             raise ValueError("bounded nonnegative epoch required")
-        if self.replaced_slot not in (0, 1, 2):
+        if type(self.replaced_slot) is not int or self.replaced_slot not in (0, 1, 2):
             raise ValueError("replacement slot must be 0, 1, or 2")
         if (not isinstance(self.old_members, tuple) or not isinstance(self.new_members, tuple) or
                 len(self.old_members) != 3 or len(self.new_members) != 3 or
@@ -159,7 +159,8 @@ class TransferContext:
             raise ValueError("exactly the declared physical slot must change")
         if type(self.dimension) is not int or self.dimension <= 0 or self.dimension > 64:
             raise ValueError("dimension outside frozen bound")
-        if (self.field_modulus, self.group_modulus) != (1019, 2039):
+        if (type(self.field_modulus) is not int or type(self.group_modulus) is not int or
+                (self.field_modulus, self.group_modulus) != (1019, 2039)):
             raise ValueError("this reference implementation uses the frozen toy group")
 
     def identifier(self) -> str:
@@ -735,38 +736,64 @@ def assemble_certificate(
 
 
 def import_signed(raw: dict[str, Any]) -> SignedStatement:
+    if type(raw) is not dict:
+        raise ValueError("signed envelope must be an object")
     if set(raw) != {"statement", "signature_hex"}:
         raise ValueError("invalid signed envelope")
     statement = raw["statement"]
+    if type(statement) is not dict:
+        raise ValueError("statement must be an object")
     if set(statement) != {"context_id", "kind", "signer", "role", "body"}:
         raise ValueError("invalid statement schema")
     if not all(isinstance(statement[name], str) and 0 < len(statement[name]) <= 128
                for name in ("context_id", "kind", "signer", "role")):
         raise ValueError("invalid bounded statement labels")
-    if not isinstance(statement["body"], dict):
+    if type(statement["body"]) is not dict:
         raise ValueError("statement body must be an object")
-    signature = bytes.fromhex(raw["signature_hex"])
+    signature_hex = raw["signature_hex"]
+    if (type(signature_hex) is not str or len(signature_hex) != 128 or
+            any(character not in "0123456789abcdef" for character in signature_hex)):
+        raise ValueError("signature must use canonical lowercase hexadecimal")
+    signature = bytes.fromhex(signature_hex)
     if len(signature) != 64:
         raise ValueError("invalid Ed25519 signature")
     return SignedStatement(Statement(**statement), signature)
 
 
 def _parse_certificate(certificate: dict[str, Any]) -> tuple[TransferContext, list[int], list[int], dict[int, int], list[SignedStatement], list[SignedStatement]]:
+    if type(certificate) is not dict:
+        raise ValueError("certificate must be an object")
     required = {"context", "context_id", "old_commitments", "new_commitments",
                 "mask_commitments", "proposals", "receipts", "certificate_version"}
     if set(certificate) != required or certificate["certificate_version"] != "continuity-certificate":
         raise ValueError("invalid certificate schema")
+    if type(certificate["context"]) is not dict:
+        raise ValueError("certificate context must be an object")
+    context_keys = {
+        "service", "epoch", "cut_root", "old_members", "new_members",
+        "replaced_slot", "session", "generation", "dimension",
+        "field_modulus", "group_modulus",
+    }
+    if set(certificate["context"]) != context_keys:
+        raise ValueError("invalid context schema")
     raw_context = dict(certificate["context"])
+    if (type(raw_context["old_members"]) not in (list, tuple) or
+            type(raw_context["new_members"]) not in (list, tuple)):
+        raise ValueError("member vectors must be arrays")
     raw_context["old_members"] = tuple(raw_context["old_members"])
     raw_context["new_members"] = tuple(raw_context["new_members"])
     context = TransferContext(**raw_context)
     context.validate()
-    if certificate["context_id"] != context.identifier():
+    if type(certificate["context_id"]) is not str or certificate["context_id"] != context.identifier():
         raise ValueError("context identifier mismatch")
+    if type(certificate["old_commitments"]) is not list or type(certificate["new_commitments"]) is not list:
+        raise ValueError("commitment vectors must be JSON arrays")
     old = list(certificate["old_commitments"])
     new = list(certificate["new_commitments"])
     if len(old) != 3 or len(new) != 3 or any(type(x) is not int for x in old + new):
         raise ValueError("invalid commitment vector")
+    if type(certificate["mask_commitments"]) is not dict:
+        raise ValueError("mask commitments must be an object")
     masks: dict[int, int] = {}
     for raw_index, value in certificate["mask_commitments"].items():
         if not isinstance(raw_index, str):
@@ -775,6 +802,8 @@ def _parse_certificate(certificate: dict[str, Any]) -> tuple[TransferContext, li
         if raw_index != str(index) or index in masks or type(value) is not int:
             raise ValueError("invalid mask commitment")
         masks[index] = value
+    if type(certificate["proposals"]) is not list or type(certificate["receipts"]) is not list:
+        raise ValueError("proposal and receipt collections must be JSON arrays")
     proposals = [import_signed(raw) for raw in certificate["proposals"]]
     receipts = [import_signed(raw) for raw in certificate["receipts"]]
     return context, old, new, masks, proposals, receipts
@@ -819,7 +848,12 @@ def verify_certificate(certificate: dict[str, Any], authorization: dict[str, byt
                 return False
             if set(statement.body) != {"target_component", "mask_commitment", "dimension"}:
                 return False
-            if statement.body["dimension"] != context.dimension:
+            if (type(statement.body["target_component"]) is not int or
+                    statement.body["target_component"] not in (a, b) or
+                    type(statement.body["mask_commitment"]) is not int or
+                    not group.is_subgroup_element(statement.body["mask_commitment"]) or
+                    type(statement.body["dimension"]) is not int or
+                    statement.body["dimension"] != context.dimension):
                 return False
             observed_proposals.add((statement.signer, statement.body["target_component"],
                                     statement.body["mask_commitment"]))
@@ -835,6 +869,13 @@ def verify_certificate(certificate: dict[str, Any], authorization: dict[str, byt
                     statement.role != "DURABLE_COMPONENT" or not verify_signed(signed, authorization)):
                 return False
             if set(statement.body) != {"component", "commitment", "generation"}:
+                return False
+            if (type(statement.body["component"]) is not int or
+                    statement.body["component"] not in (0, 1, 2) or
+                    type(statement.body["commitment"]) is not int or
+                    not group.is_subgroup_element(statement.body["commitment"]) or
+                    type(statement.body["generation"]) is not str or
+                    not 0 < len(statement.body["generation"]) <= 128):
                 return False
             if check_generation and statement.body["generation"] != context.generation:
                 return False
@@ -894,26 +935,44 @@ def verify_private_delivery(
     """
     group = group or TinyVectorPedersen()
     try:
+        if (not isinstance(signed, SignedStatement) or
+                type(mask_commitments) is not dict or
+                type(new_commitments) not in (tuple, list) or len(new_commitments) != 3):
+            return None
         context.validate()
+        k = context.replaced_slot
+        a, b = (k + 1) % 3, (k + 2) % 3
+        if (set(mask_commitments) != {a, b} or
+                any(type(index) is not int for index in mask_commitments) or
+                any(not group.is_subgroup_element(value) for value in mask_commitments.values()) or
+                any(not group.is_subgroup_element(value) for value in new_commitments)):
+            return None
         statement = signed.statement
+        if type(statement.body) is not dict:
+            return None
         if (statement.context_id != context.identifier() or
                 statement.role != "PRIVATE_OPENING" or
                 not verify_signed(signed, authorization)):
             return None
-        k = context.replaced_slot
-        a, b = (k + 1) % 3, (k + 2) % 3
         expected_signer = {
             a: context.old_members[b],  # survivor b samples delta_a
             b: context.old_members[a],  # survivor a samples delta_b
         }
         target = statement.body.get("target_component")
-        if target not in (a, b) or statement.signer != expected_signer[target]:
+        if (type(target) is not int or target not in (a, b) or
+                statement.signer != expected_signer[target]):
             return None
-        if statement.body.get("mask_commitment") != mask_commitments.get(target):
+        mask_commitment = statement.body.get("mask_commitment")
+        if (type(mask_commitment) is not int or
+                mask_commitment != mask_commitments.get(target)):
             return None
-        if statement.body.get("dimension") != context.dimension:
+        if (type(statement.body.get("dimension")) is not int or
+                statement.body.get("dimension") != context.dimension):
             return None
-        mask = Opening(tuple(statement.body.get("values", ())), statement.body.get("blinding"))
+        if (type(statement.body.get("values")) is not list or
+                type(statement.body.get("blinding")) is not int):
+            return None
+        mask = Opening(tuple(statement.body["values"]), statement.body["blinding"])
         if len(mask.values) != context.dimension:
             return None
         if group.commit(mask.values, mask.blinding) != mask_commitments[target]:
@@ -937,9 +996,13 @@ def verify_private_delivery(
         }
         if set(statement.body) != expected_keys or statement.body["recipient"] != replacement:
             return None
-        if statement.body["component"] != target:
+        if type(statement.body["component"]) is not int or statement.body["component"] != target:
             return None
-        if statement.body["component_commitment"] != new_commitments[target]:
+        if (type(statement.body["component_commitment"]) is not int or
+                statement.body["component_commitment"] != new_commitments[target]):
+            return None
+        if (type(statement.body["component_values"]) is not list or
+                type(statement.body["component_blinding"]) is not int):
             return None
         component_opening = Opening(
             tuple(statement.body["component_values"]), statement.body["component_blinding"]
@@ -1029,26 +1092,34 @@ def derive_survivor_opening(
 def verify_invalid_opening(signed: SignedStatement, context: TransferContext,
                            authorization: dict[str, bytes],
                            group: TinyVectorPedersen | None = None) -> bool:
-    """Accept a canonical, role-authorized signed invalid mask opening."""
+    """Accept only a canonical signed invalid peer-mask opening.
+
+    A replacement-directed ``MASK_COMPONENT_OPENING`` envelope also contains a
+    refreshed component opening.  Its Ed25519 signature covers the entire
+    envelope, so it cannot be truncated into a mask-only public proof.  Such an
+    envelope is therefore a private reject/abort object, never public blame
+    evidence under this predicate.
+    """
     group = group or TinyVectorPedersen()
     try:
+        if not isinstance(signed, SignedStatement):
+            return False
         context.validate()
         statement = signed.statement
         if (statement.context_id != context.identifier() or
-                statement.kind not in {"MASK_OPENING", "MASK_COMPONENT_OPENING"} or
+                statement.kind != "MASK_OPENING" or
                 statement.role != "PRIVATE_OPENING" or
                 not verify_signed(signed, authorization)):
             return False
         body = statement.body
-        base = {
+        if type(body) is not dict:
+            return False
+        expected_schema = {
             "target_component", "recipient", "values", "blinding",
             "mask_commitment", "dimension",
         }
-        replacement_extra = {
-            "component", "component_values", "component_blinding", "component_commitment",
-        }
-        expected_schema = base if statement.kind == "MASK_OPENING" else base | replacement_extra
-        if set(body) != expected_schema or body["dimension"] != context.dimension:
+        if (set(body) != expected_schema or type(body["dimension"]) is not int or
+                body["dimension"] != context.dimension):
             return False
         k = context.replaced_slot
         a, b = (k + 1) % 3, (k + 2) % 3
@@ -1057,20 +1128,18 @@ def verify_invalid_opening(signed: SignedStatement, context: TransferContext,
             a: context.old_members[b],
             b: context.old_members[a],
         }
-        if target not in expected_signer or statement.signer != expected_signer[target]:
+        if (type(target) is not int or target not in expected_signer or
+                statement.signer != expected_signer[target]):
             return False
         peer = context.old_members[a] if target == a else context.old_members[b]
-        expected_recipient = peer if statement.kind == "MASK_OPENING" else context.new_members[k]
-        if body["recipient"] != expected_recipient:
+        if type(body["recipient"]) is not str or body["recipient"] != peer:
             return False
-        if (len(tuple(body["values"])) != context.dimension or
+        if (type(body["values"]) is not list or
+                len(body["values"]) != context.dimension or
+                type(body["blinding"]) is not int or
+                type(body["mask_commitment"]) is not int or
                 not group.is_subgroup_element(body["mask_commitment"])):
             return False
-        if statement.kind == "MASK_COMPONENT_OPENING":
-            if (body["component"] != target or
-                    len(tuple(body["component_values"])) != context.dimension or
-                    not group.is_subgroup_element(body["component_commitment"])):
-                return False
         actual = group.commit(tuple(body["values"]), body["blinding"])
     except (KeyError, TypeError, ValueError, OverflowError):
         return False

@@ -179,66 +179,137 @@ may be the one unavailable server.  The artifact retains this as the
 the theorem's one-fault premise is violated; public signatures alone do not
 make dishonest storage durable.
 
-## 5. Static one-server privacy
+## 5. Static protocol-following one-server privacy
 
-The privacy statement concerns only the sharing and continuity layer.  It does
-not remove leakage from recommendation outputs, rating counts, timing, public
-membership, epoch identifiers, activation decisions, or the application-level
-cut root.
-
-For a fixed secret vector `x`, sample `z_0,z_1` uniformly and set
-`z_2=x-z_0-z_1`.  Any pair of components is uniform over `F^(2m)` and therefore
+This property uses a narrower adversary than the active-integrity claims.  Fix
+one physical identity before the execution.  It follows the protocol, remains
+bound to one physical slot while it is a member, and does not re-enter after it
+retires.  It observes the public transcript and exactly the private messages and
+durable openings addressed to that identity.  The claim excludes a malicious
+receiver, error-channel attacks, two-server collusion, and mobile corruption.
+Application outputs, rating counts, timing/length, membership, epoch identifiers,
+activation decisions, and the cut root are declared leakage.  Commitment values,
+commitment-bearing statement bodies, and signatures are outputs of the
+simulator, not leakage inputs.  Long-term keys and authorization metadata are
 independent of `x`.
 
-**Lemma 4 (survivor views).** The algebraic view of either survivor in one
-replacement is independent of `x`.
+At a fresh base, sample `z_0,z_1` independently and uniformly in `F^m`, set
+`z_2=x-z_0-z_1`, and sample component blindings `rho_0,rho_1,rho_2`
+independently and uniformly in `F`.  Every transfer independently samples the
+two mask openings `M_i=(delta_i,tau_i)` uniformly in `F^m x F`.  The
+independence of the component blindings is a joint premise: marginal perfect
+hiding does not permit replacing a commitment independently after its opening
+has been revealed.
 
-**Proof.** A survivor initially holds a pair of components, which is uniform and
-independent of `x`.  It additionally sees the two independent uniform masks,
-its refreshed pair, and deterministic functions of these values.  The complete
-view is therefore an efficiently computable function of variables whose joint
-distribution is independent of `x`. QED.
-
-**Lemma 5 (replacement view).** The algebraic view of the replacement is
-independent of `x`.
-
-**Proof.** The replacement sees `(z'_a,z'_b)` and the two masks needed to verify
-its incoming openings.  The map
+For one replacement of slot `k`, with survivors `a,b`, write
+`O_i=(z_i,rho_i)`.  The complete public commitment tuple is
 
 ```
-(z_a,z_b,delta_a,delta_b)
-  <-> (z'_a,z'_b,delta_a,delta_b)
+T=(C_k,C_a,C_b,D_a,D_b,C'_k,C'_a,C'_b),
 ```
 
-is a bijection.  Since `(z_a,z_b)` is a uniform pair independent of `x` and the
-masks are independent uniform vectors, the replacement view is also independent
-of `x`. QED.
+where
 
-**Theorem 3 (static one-server privacy, hybrid form).** Assume authenticated
-private channels, perfectly hiding vector commitments, and signature security.
-Fix one corrupted server identity.  For one transfer, or a bounded serial chain
-with exact membership handoff, permanent identity-to-slot binding, fresh
-contexts/sessions/generations, no identity re-entry, and no later honest state
-delivered to a removed identity, the protocol view is simulatable from the
-declared public leakage and the corrupted identity's current two-component
-view.  For a fresh initial sharing, that view is independent of `x`.
+```
+C'_a=C_a D_a,  C'_b=C_b D_b,  C'_k=C_k/(D_a D_b).
+```
 
-**Proof.** For each transition in which the corrupted identity participates,
-Lemmas 4 or 5 give an `x`-independent algebraic transition.  The simulator
-samples the same independent masks, computes all deterministic local values,
-and replaces commitments by commitments to zero using perfect hiding.  It uses
-the standard signature-hybrid argument for honest statements.  Exact handoff
-keeps one serial history, slot binding prevents the fixed identity from
-accumulating views from different replicated roles, and no-reentry prevents a
-removed identity from receiving later state.  Induction over the bounded chain
-completes the simulation. QED.
+All simulators below generate this tuple jointly.  They never replace a
+commitment whose opening is in the corrupted view by an independent zero
+commitment.
 
-The theorem explicitly excludes mobile corruptions that move to new identities
-and accumulate erased state.  It also excludes collusion of two current
-servers.  The executable `privacy_views.csv` enumerates all `5^4` algebraic
-randomness assignments for every secret and each of the three server roles; it
-checks equality of the exact view histograms.  That finite oracle validates the
-small-domain algebra but does not prove the commitment or signature assumptions.
+**Lemma 4 (survivor joint view).** The full private/public view of a
+protocol-following survivor in one replacement is independent of `x`.
+
+**Proof.** Suppose the fixed identity is `S_a`.  Its visible old openings are
+`O_k,O_b`; it samples `M_b` and receives `M_a`.  A simulator samples
+`O_k,O_b,M_a,M_b` from their independent uniform distributions, computes
+`O'_k=O_k-M_a-M_b` and `O'_b=O_b+M_b`, and computes
+all commitments with visible openings.  The only old component opening hidden
+from `S_a` is `O_a`.  Conditioned on everything visible, `rho_a` remains
+independent uniform, so `C_a=Com(z_a;rho_a)` is a uniform group element even
+though `z_a=x-z_k-z_b`.  The simulator samples one uniform `U`, sets `C_a=U`
+and `C'_a=U D_a`, and uses the actual commitments for the other visible
+openings.  Every visible opening check and all three public link equations hold.
+This is the exact joint distribution, not a product of commitment marginals.
+The argument for `S_b` is symmetric. QED.
+
+**Lemma 5 (replacement and retiring joint views).** The full private/public
+view of a protocol-following replacement or retiring server in one replacement
+is independent of `x`.
+
+**Proof.** The replacement receives `M_a,M_b,O'_a,O'_b`.  Its simulator samples
+that four-opening tuple independently and uniformly.  This is exact because the map
+
+```
+(O_a,O_b,M_a,M_b) <-> (O'_a,O'_b,M_a,M_b)
+```
+
+is bijective, and `(O_a,O_b)` has an `x`-independent value distribution with
+independent blindings.  The simulator derives `O_a=O'_a-M_a` and
+`O_b=O'_b-M_b`, computes `C_a,C_b,D_a,D_b,C'_a,C'_b`, samples uniform `U=C_k`,
+and sets `C'_k=U/(D_a D_b)`.  The hidden base blinding `rho_k` makes the real
+`C_k` uniform conditioned on the visible openings, so the distribution is
+exact.
+
+A retiring `S_k` knows `O_a,O_b` and receives no new private envelope.  Its
+simulator first samples `O_a,O_b` independently and uniformly, computes
+`C_a,C_b`, samples independent uniform `C_k,D_a,D_b`, and
+derives all three new commitments from the public equations.  Uniformity of
+`C_k` follows from `rho_k`; uniformity and independence of `D_a,D_b` follow from
+`tau_a,tau_b`.  All known openings and links verify. QED.
+
+**Theorem 3 (joint-view privacy preservation).** Under private authenticated
+channels, the sampling premise above, and perfectly hiding Pedersen commitments,
+the view of one fixed protocol-following physical identity is identically
+distributed for any two state vectors with the same declared leakage.  The
+claim holds for one transfer and for a bounded serial chain with exact
+commitment/membership handoff, fresh contexts, permanent identity-to-slot
+binding, and no re-entry or later private delivery after retirement.
+
+**Proof.** Lemmas 4 and 5 give exact role simulators for one transition and keep
+every commitment with a visible opening unchanged.  Proposal, private-envelope,
+and receipt bodies are then identical in distribution.  Conditioned on any
+fixed authorization/key set generated independently of `x`, signatures are
+post-processing of those bodies.  Equivalently, a protocol-view simulator is
+given the observed identity's own state-independent key and may invoke the
+honest signing functionality for all other signers.
+
+For serial composition, fix the identity's slot `s`.  Its membership is one
+interval: it may join as a replacement, survive zero or more replacements of
+other slots, retire once, and then receive public data only.  If present at the
+fresh base, its two visible component openings are jointly uniform and the one
+hidden component commitment is uniform.  If it joins later, an *offline*
+simulator samples its two openings and both masks at the join transition,
+derives the corresponding old openings, samples the hidden join-point
+commitment, and then samples the earlier masks internally.  It applies the
+affine equations backwards to the two tracked openings and the public link
+equations backwards to the hidden commitment.  Hence the public prefix is
+constructed consistently; no previously fixed commitment is opened after the
+fact.
+
+From the join point forward, the simulator invokes the replacement kernel once,
+the survivor kernel at every intermediate step, and the retiring kernel if the
+identity leaves.  A public-only suffix is extended by sampling later honest
+masks internally.  Exact handoff passes the same commitment triple between
+adjacent steps.  Every commitment already in the history is updated rather than
+resampled, and the proof never assumes that component blindings become
+independent again after the base generation.  Conditioned on the entire
+simulated history, all visible openings verify and the hidden-commitment path is
+one uniform starting element followed by the same multiplicative updates as in
+the real execution.  Fixed slot and no re-entry prevent the identity from
+accumulating a complementary opening.  Induction over the bounded chain gives
+an exact joint distribution for the complete private/public view. QED.
+
+The finite evidence is intentionally split.  `privacy_views.csv` enumerates
+9,375 algebraic private-subview assignments over `F_5`; it excludes blindings,
+commitments, and signatures.  `reviewer_symbolic_check.py` independently models
+one scalar coordinate, all four physical roles, visible component and mask
+blindings, and the eight correlated commitments.  It compares 4,096 exact
+`F_2` views and supplies 64 finite-field rank witnesses.  It excludes actual
+signature bytes and vector dimensions greater than one.  Both are
+model-conformance checks for the written proof, not replacements for the
+general argument or cryptographic assumptions.
 
 ## 6. Exactly-once inclusion through churn
 
@@ -321,8 +392,12 @@ exhaustive over arbitrary network schedules.
 ## 8. Positive accountability and its boundary
 
 A signed mask commitment names the full transfer context and target component.
-A signed private mask opening names the same context, intended recipient,
-vector, blinding, and commitment.
+The only public invalid-opening witness is a separately signed `MASK_OPENING`
+statement naming that same context, the intended peer survivor, the random mask
+vector, its blinding, and its commitment.  A replacement-directed
+`MASK_COMPONENT_OPENING` is a different private envelope: its signature covers
+both the mask opening and a refreshed state-component opening, so the envelope
+cannot be truncated into mask-only evidence.
 
 **Proposition 1 (invalid-opening evidence).** Under signature unforgeability and
 authentic authorization, a valid signature on a mask opening that fails the
@@ -336,9 +411,10 @@ signed root.  Injective encoding prevents interpreting the same signature as a
 different permitted statement. QED.
 
 The disclosed object is a uniformly random resharing mask, not an application
-state component.  One such witness is independent of `x`.  Repeated evidence
-under mobile corruptions or implementation-dependent auxiliary leakage is not
-analyzed.
+state component.  One such witness is independent of `x`.  A malformed
+replacement envelope is therefore a private verification failure and abort, not
+a public blame object.  Repeated evidence under mobile corruptions or
+implementation-dependent auxiliary leakage is not analyzed.
 
 **Proposition 2 (equivocation evidence).** Two valid signatures by one signer on
 different mask roots for the same full context and target component prove a
@@ -386,8 +462,15 @@ The artifact retains three continuity ablations:
 1. **No algebraic link.** All statements can be freshly signed around a changed
    commitment vector.  A verifier that skips the three homomorphic equations
    accepts; the full verifier rejects.
-2. **No receipt-generation check.** Authenticated receipts carrying another
-   generation label become reusable; the full verifier rejects them.
+2. **No receipt body/context generation consistency check.** Fresh statements
+   are signed under the current context identifier while their redundant body
+   field is changed to a different generation.  A verifier that omits only the
+   redundant equality accepts this internally inconsistent statement; the full
+   verifier rejects.  This is not an old-transfer replay.  A separate control
+   transplants an unchanged receipt, including its original signature, from a
+   different transfer context.  Both the full verifier and the weakened
+   body-generation verifier reject it because the signature is bound to the
+   old context identifier.
 3. **One receipt per component.** A weak availability certificate can lose its
    only holder; the full two-holder certificate rejects the reduced set.
 

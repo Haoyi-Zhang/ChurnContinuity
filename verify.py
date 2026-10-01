@@ -17,6 +17,8 @@ DETERMINISTIC_FILES = (
     "signed_transcripts.json",
     "continuity_cases.csv",
     "privacy_views.csv",
+    "joint_view_privacy.csv",
+    "joint_view_privacy.json",
     "certificate_sizes.csv",
     "continuity_certificate.json",
     "continuity_evidence.json",
@@ -36,12 +38,16 @@ def main() -> None:
 
     summary = json.loads((args.actual / "scientific_summary.json").read_text())
     frozen = {
-        "generated_schedule_fault_cases": 999,
-        "total_obligations": 39246,
-        "continuity_cases": 31,
+        "generated_schedule_fault_cases": 1000,
+        "total_obligations": 43407,
+        "continuity_cases": 32,
         "continuity_case_failures": 0,
         "privacy_view_obligations": 9375,
         "privacy_distributions_equal": 15,
+        "joint_view_exact_assignments": 4096,
+        "joint_view_distribution_comparisons": 8,
+        "joint_view_rank_checks": 64,
+        "joint_view_checks_passed": 1,
         "certificate_size_points": 4,
         "crash_post_replay_correct": 96,
         "signed_contradictions_accepted": 16,

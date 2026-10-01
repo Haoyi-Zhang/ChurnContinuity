@@ -10,8 +10,8 @@
 | Public certificate | 3 old + 3 new + 2 mask commitments; 2 proposals + 6 receipts | Public-key infrastructure and activation-log consensus |
 | Durability | Immutable dictionaries unaffected by the explicit crash transition; `issue_receipt` requires a matching durable component first | Real `fsync`, media loss, rollback-resistant signing hardware |
 | Crash replay | Session-bound deterministic outboxes and idempotent writes | Eventually resuming participants and message delivery |
-| Static privacy | Exact `F_5` view distributions; written hybrid proof | No mobile corruption, no two-server collusion, declared metadata leakage |
-| Positive blame | Invalid signed random-mask opening; same-context equivocation | No complete blame for silence or unverifiable private behavior |
+| Static protocol-following privacy | Written role simulators; exact `F_5` algebraic subviews; independent one-coordinate joint-view checker | No malicious-receiver privacy, mobile corruption, two-server collusion, or traffic-analysis claim; declared metadata leakage |
+| Positive blame | Independently signed invalid peer-mask opening; same-context equivocation | No complete blame for silence or unverifiable private behavior |
 | Nudge integration | Threat-model and 2-of-3 layout used as motivation | No `Z_(2^b)` commitment instantiation; no recommendation engine patch |
 
 ## Certificate acceptance predicate
@@ -58,14 +58,19 @@ claim is made that disclosing a refreshed component opening is privacy-safe.
 - Mixed-generation replicated and Shamir checks: `F_5` main domain, `F_3` pilot.
 - Cyclic-ring image controls: moduli 4, 8, and 16.
 - Legacy schedule/fault cases: 968.
-- Physical continuity cases: 31, bringing the total to the frozen bound of 999.
-- Exact privacy oracle: `5^4` randomness assignments for each of five secrets
-  and three server roles, or 9,375 view obligations.
+- Physical continuity cases: 32, bringing the generated case total to 1,000.
+- Algebraic privacy oracle: `5^4` randomness assignments for each of five secrets
+  and three active roles, or 9,375 private-subview obligations.
+- Joint-view checker: 4,096 exact `F_2` role/secret/randomness views and 64
+  finite-field rank checks.  It includes visible blindings and all eight
+  correlated commitments for one scalar coordinate.
 - Certificate-size points: vector dimensions 1, 8, 32, and 64.
 
-The privacy oracle excludes commitments and signatures from enumeration.  The
-written proof treats commitments through perfect hiding and signatures through
-standard post-processing/hybrid reasoning.
+The algebraic oracle excludes commitments, blindings, and signatures.  The
+separate joint checker includes commitments and blindings but excludes actual
+signature bytes and multi-coordinate vectors.  The written proof handles the
+general vector view and treats signatures as post-processing under fixed keys
+independent of the state; neither finite check replaces that proof.
 
 ## Selection and negative-control rules
 
@@ -77,14 +82,19 @@ This is a falsification fixture, not a random workload.
 The continuity mutations are fixed by class rather than selected after seeing
 results: changed new commitment, changed mask commitment, proposal signature
 bit flip, missing receipt, signer substitution, component substitution, context
-epoch substitution, and changed old commitment.  The three ablations remove
-algebraic linkage, receipt-generation binding, or the second physical receipt.
+epoch substitution, and changed old commitment.  The three ablations remove algebraic linkage, redundant receipt-body/context
+generation consistency, or the second physical receipt.  A separate control
+transplants unchanged receipts from another context; both the full verifier and
+the generation-consistency-weakened verifier reject those bytes because the
+signed context identifier differs.
 All are benign local transformations of synthetic material.
 
 ## Evidence privacy
 
-The continuity blame sample exposes only a signed random resharing mask and its
-blinding.  The mask is independent of the shared recommendation vector.  The
+The public continuity blame sample accepts only an independently signed
+`MASK_OPENING` and exposes that random resharing mask and its blinding.  A
+`MASK_COMPONENT_OPENING` replacement envelope is never accepted as mask-only
+public evidence because its signature covers the component opening as well.  The mask is independent of the shared recommendation vector.  The
 older generic contradiction corpus can expose opaque root strings only.  The
 artifact does not claim that arbitrary diagnostic transcripts are safe to
 publish, nor that repeated disclosures remain private under mobile corruption.
