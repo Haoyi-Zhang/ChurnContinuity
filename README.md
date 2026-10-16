@@ -126,3 +126,9 @@ code paths are not proof-assistant certification or independent human review.
 and access depth. Code and original fixtures use `LICENSE`;
 `THIRD-PARTY-NOTICES.md` preserves dependency and external-resource notices.
 Scholarly PDFs and third-party implementations are not redistributed.
+## Paper diagrams
+
+`plot_schematics.py` draws the protocol and durability relations directly as
+vector PDFs with embedded fonts. With the optional dependencies installed,
+run `python -B check_schematics.py` to check two identical generations and
+font/vector structure; this is separate from the finite scientific campaign.
